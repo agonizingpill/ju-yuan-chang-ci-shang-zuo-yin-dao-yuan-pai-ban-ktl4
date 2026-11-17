@@ -28,6 +28,8 @@ def post_view(s,x):
 def post(s,d,u):
     a=s.get(CrewAssignment,d.assignment_id)
     if not a:raise HTTPException(404,'实名班表不存在')
+    from .staff_service import pending_swap_for_assignment
+    if pending_swap_for_assignment(s,a.id):raise HTTPException(409,'该岗在待接班换班中，接班生效后由接班者接管岗位，暂不安排')
     c,p,prod=performance_context(s,s.get(CrewCall,a.crew_call_id).performance_id);production_lock(s,prod.id);mutable(s,p.id);a=locked(s,CrewAssignment,d.assignment_id);z=locked(s,EntranceZone,d.zone_id)
     if not a.checked_in:raise HTTPException(409,'只有实名已到岗人员才可安排入口岗位')
     if z.production_id!=p.production_id or not z.active:raise HTTPException(409,'分区不属于本剧目或未启用')

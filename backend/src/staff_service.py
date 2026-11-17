@@ -4,7 +4,16 @@ from fastapi import HTTPException
 from .models import CrewCall,Performance,Production
 from .staff_models import StaffMember,CrewAssignment
 from .debrief_models import ShowDebrief
+from .swap_models import SwapBatch,SwapItem
 from .services import get,pack,audit
+
+def pending_swap_for_staff(s,staff_id):
+    return s.scalar(select(SwapItem.id).join(SwapBatch,SwapBatch.id==SwapItem.batch_id).where(
+        SwapItem.to_staff_id==staff_id,SwapBatch.state=='pending',SwapItem.state.in_(('waiting','arrived'))))
+
+def pending_swap_for_assignment(s,assignment_id):
+    return s.scalar(select(SwapItem.id).join(SwapBatch,SwapBatch.id==SwapItem.batch_id).where(
+        SwapItem.assignment_id==assignment_id,SwapBatch.state=='pending',SwapItem.state.in_(('waiting','arrived'))))
 
 def locked(s,cls,id):
     x=s.scalar(select(cls).where(cls.id==id).with_for_update().execution_options(populate_existing=True))
@@ -27,6 +36,7 @@ def assignment_view(s,x):
 def assign(s,d,u):
     staff=locked(s,StaffMember,d.staff_id);c,p,prod=call_context(s,d.crew_call_id)
     if not staff.active:raise HTTPException(409,'人员已停用，不能排入当班')
+    if pending_swap_for_staff(s,staff.id):raise HTTPException(409,'该人员已有待接班换班，完成或取消后再排班，避免双重占用')
     if s.scalar(select(ShowDebrief.id).where(ShowDebrief.performance_id==p.id)):raise HTTPException(409,'已有散场交接，实名班表冻结')
     existing=s.scalars(select(CrewAssignment).where(CrewAssignment.crew_call_id==c.id)).all()
     if any(x.staff_id==staff.id for x in existing):raise HTTPException(409,'同一人员不能重复排入本场')
@@ -41,7 +51,9 @@ def assign(s,d,u):
     x=CrewAssignment(**d.model_dump(),staff_code=staff.code,staff_name=staff.name);s.add(x);s.flush();audit(s,u,f'实名排班 {staff.code}→点名#{c.id}');return assignment_view(s,x)
 
 def checkin(s,id,d,u):
-    preview=get(s,CrewAssignment,id);staff=locked(s,StaffMember,preview.staff_id);c,p,prod=call_context(s,preview.crew_call_id);x=locked(s,CrewAssignment,id)
+    preview=get(s,CrewAssignment,id)
+    if pending_swap_for_assignment(s,id):raise HTTPException(409,'该班表在待接班换班中，接班未齐前由原班值守；请使用换班接班签到')
+    staff=locked(s,StaffMember,preview.staff_id);c,p,prod=call_context(s,preview.crew_call_id);x=locked(s,CrewAssignment,id)
     if x.checked_in:raise HTTPException(409,'人员已经签到，不能重复登记或改写时间')
     if not staff.active:raise HTTPException(409,'人员已停用，请经理核对当班人员')
     if s.scalar(select(ShowDebrief.id).where(ShowDebrief.performance_id==p.id)):raise HTTPException(409,'已有散场交接，签到证据冻结')

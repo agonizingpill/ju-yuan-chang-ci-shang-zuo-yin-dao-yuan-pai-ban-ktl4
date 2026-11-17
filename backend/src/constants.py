@@ -6,3 +6,6 @@ DEBRIEF_STATES=('draft','archived')
 
 INCIDENT_STATES=('open','assigned','resolved','closed')
 ITEM_STATES=('stored','handed_over')
+
+SWAP_BATCH_STATES=('pending','effective','cancelled')
+SWAP_ITEM_STATES=('waiting','arrived','swapped','cancelled')

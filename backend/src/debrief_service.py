@@ -11,6 +11,10 @@ def evidence(s,d):
     c=s.scalar(select(CrewCall).where(CrewCall.performance_id==d.performance_id))
     if not c:raise HTTPException(409,'请先完成本场点名确认与实名到岗')
     c,p,prod=call_context(s,c.id)
+    from .swap_models import SwapBatch,SwapItem
+    if s.scalar(select(SwapItem.id).join(SwapBatch,SwapBatch.id==SwapItem.batch_id).where(
+        SwapItem.crew_call_id==c.id,SwapBatch.state=='pending',SwapItem.state.in_(('waiting','arrived')))):
+        raise HTTPException(409,'本场有待接班换班未完成，接班全部到岗生效后再保存交接')
     if d.actual_attendance>prod.seats:raise HTTPException(409,'实际观众超过剧场座位容量')
     rows=s.scalars(select(CrewAssignment).where(CrewAssignment.crew_call_id==c.id).with_for_update()).all()
     checked=sum(x.checked_in for x in rows);need=c.ushers

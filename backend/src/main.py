@@ -13,7 +13,8 @@ from .services import get,pack,audit,history,validate_history,invalidate,save_cr
 from .middlewares import RequestTrace,BurstGuard
 from .frontdesk_routes import router as frontdesk_router
 from .house_routes import router as house_router
-from .constants import ROLES,PERFORMANCE_STATES,CALL_STATES
+from .swap_routes import router as swap_router
+from .constants import ROLES,PERFORMANCE_STATES,CALL_STATES,SWAP_BATCH_STATES,SWAP_ITEM_STATES
 r=redis.Redis.from_url(os.environ['REDIS_URL'],decode_responses=True)
 @asynccontextmanager
 async def lifespan(app):
@@ -27,6 +28,7 @@ async def lifespan(app):
 app=FastAPI(title='南岸 · 场次上座与场务点名',lifespan=lifespan)
 app.include_router(frontdesk_router)
 app.include_router(house_router)
+app.include_router(swap_router)
 app.add_middleware(RequestTrace);app.add_middleware(BurstGuard)
 @app.exception_handler(IntegrityError)
 async def conflict(req,exc):return JSONResponse({'detail':'剧目编号、场次日期或点名单重复，请选择已有记录修订'},409)
@@ -40,7 +42,7 @@ def login(p:Login,s=Depends(db_session)):
 @app.get('/me')
 def me(u=Depends(current)):return {'email':u.email,'role':u.role}
 @app.get('/enums')
-def enums(u=Depends(current)):return {'roles':ROLES,'performance_states':PERFORMANCE_STATES,'call_states':CALL_STATES}
+def enums(u=Depends(current)):return {'roles':ROLES,'performance_states':PERFORMANCE_STATES,'call_states':CALL_STATES,'swap_batch_states':SWAP_BATCH_STATES,'swap_item_states':SWAP_ITEM_STATES}
 @app.get('/productions')
 def productions(s=Depends(db_session),u=Depends(current)):return [pack(x) for x in s.scalars(select(Production).order_by(Production.id))]
 @app.post('/productions')

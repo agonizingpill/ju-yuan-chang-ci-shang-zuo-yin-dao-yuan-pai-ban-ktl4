@@ -4,3 +4,6 @@ export const STATES={observed:'已验票',scheduled:'待预测',forecasted:'待�
 export const DEBRIEF_STATES={draft:'待经理归档',archived:'已归档冻结'};
 
 export const INCIDENT_STATES={open:'待分派',assigned:'处置中',resolved:'待经理复核',closed:'已关闭'};
+
+export const SWAP_BATCH_STATES={pending:'待接班',effective:'已生效',cancelled:'已取消'};
+export const SWAP_ITEM_STATES={waiting:'待到岗',arrived:'已到岗待齐',swapped:'已换班',cancelled:'已取消'};

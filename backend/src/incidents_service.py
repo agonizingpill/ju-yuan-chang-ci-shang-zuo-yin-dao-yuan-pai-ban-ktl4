@@ -5,11 +5,25 @@ from .zone_models import EntranceZone
 from .staff_models import CrewAssignment
 from .models import CrewCall
 from .debrief_models import ShowDebrief
+from .swap_models import SwapHandover
 from .zones_service import performance_context
 from .staff_service import locked
 from .services import pack,audit
 
-def view(s,x):return pack(x)|{'zone_code':s.get(EntranceZone,x.zone_id).code}
+def responsibility(s,inc):
+    """返回当前/换班前责任人；已结事件若经历换班，责任人保留为换班前人员。"""
+    a=s.get(CrewAssignment,inc.assignee_id) if inc.assignee_id else None
+    cur={'assignment_id':inc.assignee_id,'code':a.staff_code if a else None,'name':a.staff_name if a else None}
+    before=None
+    h=s.scalar(select(SwapHandover).where(SwapHandover.kind=='incident',SwapHandover.ref_id==inc.id).order_by(SwapHandover.id.desc()))
+    if h:
+        before={'code':h.from_staff_code,'name':h.from_staff_name}
+        if inc.state=='closed':cur={'assignment_id':inc.assignee_id,'code':h.from_staff_code,'name':h.from_staff_name}
+    return cur,before
+
+def view(s,x):
+    cur,before=responsibility(s,x)
+    return pack(x)|{'zone_code':s.get(EntranceZone,x.zone_id).code,'assignee':cur,'assignee_before_swap':before}
 def create(s,d,u):
     c,p,prod=performance_context(s,d.performance_id)
     if s.scalar(select(ShowDebrief.id).where(ShowDebrief.performance_id==p.id,ShowDebrief.state=='archived')):raise HTTPException(409,'本场交接已归档，不能追加现场事件')
@@ -24,6 +38,8 @@ def dispatch(s,id,d,u):
     x=context(s,id)
     if x.state!='open':raise HTTPException(409,'仅新事件可以分派，已分派不能重复')
     a=locked(s,CrewAssignment,d.assignment_id);c=s.get(CrewCall,a.crew_call_id)
+    from .staff_service import pending_swap_for_assignment
+    if pending_swap_for_assignment(s,a.id):raise HTTPException(409,'该岗在待接班换班中，接班生效后再分派未结事件')
     if c.performance_id!=x.performance_id or not a.checked_in:raise HTTPException(409,'处置人须是同一场已实名到岗人员')
     x.assignee_id=a.id;x.state='assigned';audit(s,u,f'分派事件 #{id}→{a.staff_code}');return view(s,x)
 def resolve(s,id,d,u):
